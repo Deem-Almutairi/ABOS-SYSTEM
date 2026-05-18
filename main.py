@@ -1,33 +1,78 @@
 #!/usr/bin/env python3
 """
-ABOS — AI-powered crowd congestion prediction (prototype).
+ABOS — AI-powered behavioral optimization system (operational prototype).
 
-Run: python main.py
+Run:  py -3 main.py
+      (or: python main.py  if python points to a real interpreter)
+
+Scenario keys: 1=Evacuation  2=Gate overcrowd  3=Overload  4=Crowd surge  0=Clear
 """
 
-from abos import config
-from abos.simulation import SimulationState
-from abos.visualizer import Visualizer
+from __future__ import annotations
+
+import sys
+import traceback
 
 
-def main() -> None:
-    state = SimulationState.create(
-        config.SCREEN_WIDTH,
-        config.SCREEN_HEIGHT,
-        config.NUM_AGENTS,
-    )
-    viz = Visualizer(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
-
-    running = True
+def _ensure_dependencies() -> bool:
+    """Verify pygame is installed for THIS Python interpreter."""
     try:
+        import pygame  # noqa: F401
+        return True
+    except ImportError:
+        print("ERROR: pygame is not installed for:", sys.executable, file=sys.stderr)
+        print(file=sys.stderr)
+        print("Install dependencies:", file=sys.stderr)
+        print("  py -3 -m pip install -r requirements.txt", file=sys.stderr)
+        print(file=sys.stderr)
+        print("Then start the simulation:", file=sys.stderr)
+        print("  py -3 main.py", file=sys.stderr)
+        print(file=sys.stderr)
+        print(
+            "Tip: On Windows, if 'python' does nothing, use the 'py' launcher instead.",
+            file=sys.stderr,
+        )
+        return False
+
+
+def main() -> int:
+    if not _ensure_dependencies():
+        return 1
+
+    from abos import config
+    from abos.simulation import SimulationState
+    from abos.visualization import Dashboard
+
+    ui: Dashboard | None = None
+    try:
+        # Open the window first so the app is visible while the sim loads
+        ui = Dashboard()
+        ui.show_loading("Initializing ABOS simulation…")
+
+        state = SimulationState.create(config.NUM_AGENTS)
+
+        running = True
         while running:
-            running = viz.handle_events()
+            running = ui.handle_events(state)
+            state.bootstrap_pending_routes()
             state.step()
-            viz.draw(state, state.responder.warnings)
-            viz.tick()
+            ui.draw(state)
+            ui.tick()
+    except Exception:
+        traceback.print_exc()
+        if ui is not None:
+            try:
+                ui.quit()
+            except Exception:
+                pass
+        print("\nABOS exited due to an error (see traceback above).", file=sys.stderr)
+        return 1
     finally:
-        viz.quit()
+        if ui is not None:
+            ui.quit()
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
